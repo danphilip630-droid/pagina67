@@ -16,10 +16,18 @@
         <h1 class="text-2xl md:text-3xl font-bold text-emerald-400">Inventario de Netbooks — Racks</h1>
         <p class="text-slate-400 text-sm">Control técnico en tiempo real conectado a Supabase</p>
       </div>
-      <button onclick="abrirModalNuevo()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition cursor-pointer">
-        + Agregar Máquina
-      </button>
+      <div class="flex gap-2">
+        <button onclick="cargarEquipos()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-4 py-2 rounded-lg transition cursor-pointer text-sm">
+          ↻ Actualizar
+        </button>
+        <button onclick="abrirModalNuevo()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition cursor-pointer text-sm">
+          + Agregar Máquina
+        </button>
+      </div>
     </div>
+
+    <!-- Cartel de error si falla Supabase -->
+    <div id="banner-error" class="hidden bg-rose-500/15 border border-rose-500/40 text-rose-300 p-4 rounded-xl mb-6 text-sm"></div>
 
     <!-- Métricas -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -44,9 +52,9 @@
     <!-- Filtros -->
     <div class="flex flex-col md:flex-row gap-3 mb-4">
       <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-800 w-fit">
-        <button onclick="filtrarRack('todos')" id="btn-todos" class="px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950">Todos</button>
-        <button onclick="filtrarRack(1)" id="btn-1" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white">Rack 1</button>
-        <button onclick="filtrarRack(2)" id="btn-2" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white">Rack 2</button>
+        <button onclick="filtrarRack('todos')" id="btn-todos" class="px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950 cursor-pointer">Todos</button>
+        <button onclick="filtrarRack(1)" id="btn-1" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer">Rack 1</button>
+        <button onclick="filtrarRack(2)" id="btn-2" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer">Rack 2</button>
       </div>
       <input type="text" id="buscador" oninput="renderizarTabla()" placeholder="Buscar por N° máquina, modelo, serial o estado..."
         class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500" />
@@ -68,7 +76,7 @@
             <th class="p-3 text-center">Office</th>
             <th class="p-3">Aplicaciones</th>
             <th class="p-3">Observaciones</th>
-            <th class="p-3 text-right">Acción</th>
+            <th class="p-3 text-right">Acciones</th>
           </tr>
         </thead>
         <tbody id="tabla-body" class="divide-y divide-slate-800">
@@ -145,44 +153,59 @@
         </div>
 
         <div class="flex justify-end gap-2 pt-3">
-          <button type="button" onclick="cerrarModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">Cancelar</button>
-          <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-sm">Guardar</button>
+          <button type="button" onclick="cerrarModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm cursor-pointer">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-sm cursor-pointer">Guardar</button>
         </div>
       </form>
     </div>
   </div>
 
   <script>
-    // PEGÁ TU PROJECT URL ACÁ ABAJO (dejando las comillas)
-    const SUPABASE_URL = 'PEGAR_AQUI_TU_PROJECT_URL';
+    const SUPABASE_URL = 'https://twhwvmzidhamiranlhiv.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_ryRHRGDgfjAdw6ohIxq5YQ_zd3EWCZ8';
 
-    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
+    let db = null;
     let equipos = [];
     let rackFiltro = 'todos';
 
-    async function cargarEquipos() {
-      const { data, error } = await db
-        .from('equipos')
-        .select('*')
-        .order('rack', { ascending: true })
-        .order('numero_maquina', { ascending: true });
+    function mostrarError(msg) {
+      const banner = document.getElementById('banner-error');
+      banner.textContent = '⚠️ ' + msg;
+      banner.classList.remove('hidden');
+      document.getElementById('tabla-body').innerHTML =
+        `<tr><td colspan="12" class="p-6 text-center text-rose-400">${msg}</td></tr>`;
+    }
 
-      if (error) {
-        alert('Error conectando a Supabase: ' + error.message);
-        return;
+    async function cargarEquipos() {
+      try {
+        if (!db) {
+          db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        }
+        const { data, error } = await db
+          .from('equipos')
+          .select('*')
+          .order('rack', { ascending: true })
+          .order('numero_maquina', { ascending: true });
+
+        if (error) {
+          mostrarError('Error de Supabase: ' + error.message);
+          return;
+        }
+        document.getElementById('banner-error').classList.add('hidden');
+        equipos = data || [];
+        actualizarMetricas();
+        renderizarTabla();
+      } catch (err) {
+        mostrarError('Error de conexión: ' + err.message);
       }
-      equipos = data || [];
-      actualizarMetricas();
-      renderizarTabla();
     }
 
     function actualizarMetricas() {
-      document.getElementById('stat-total').textContent = equipos.length;
-      document.getElementById('stat-enciende').textContent = equipos.filter(e => e.enciende).length;
-      document.getElementById('stat-office').textContent = equipos.filter(e => e.office).length;
-      document.getElementById('stat-bateria').textContent = equipos.filter(e => e.funciona_bateria).length;
+      const lista = rackFiltro === 'todos' ? equipos : equipos.filter(e => e.rack === rackFiltro);
+      document.getElementById('stat-total').textContent = lista.length;
+      document.getElementById('stat-enciende').textContent = lista.filter(e => e.enciende).length;
+      document.getElementById('stat-office').textContent = lista.filter(e => e.office).length;
+      document.getElementById('stat-bateria').textContent = lista.filter(e => e.funciona_bateria).length;
     }
 
     function filtrarRack(rack) {
@@ -190,11 +213,12 @@
       ['todos', 1, 2].forEach(id => {
         const btn = document.getElementById('btn-' + id);
         if (id === rack) {
-          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950';
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950 cursor-pointer';
         } else {
-          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white';
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer';
         }
       });
+      actualizarMetricas();
       renderizarTabla();
     }
 
@@ -214,7 +238,7 @@
 
       const tbody = document.getElementById('tabla-body');
       if (filtrados.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="12" class="p-6 text-center text-slate-500">No hay máquinas que coincidan.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" class="p-6 text-center text-slate-500">No hay máquinas cargadas en este filtro.</td></tr>';
         return;
       }
 
@@ -231,9 +255,12 @@
           <td class="p-3 text-center">${badgeBool(e.office)}</td>
           <td class="p-3 text-xs max-w-[150px] truncate">${e.aplicaciones || '-'}</td>
           <td class="p-3 text-xs max-w-[180px] truncate">${e.observaciones || '-'}</td>
-          <td class="p-3 text-right">
-            <button onclick='editarEquipo(${JSON.stringify(e)})' class="px-3 py-1 bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 rounded-md text-xs font-medium transition">
-              Editar
+          <td class="p-3 text-right whitespace-nowrap space-x-1">
+            <button onclick="editarEquipoPorId(${e.id})" class="px-2.5 py-1 bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 rounded-md text-xs font-medium transition cursor-pointer">
+              Modificar
+            </button>
+            <button onclick="eliminarEquipo(${e.id}, ${e.rack}, ${e.numero_maquina})" class="px-2.5 py-1 bg-slate-800 hover:bg-rose-500 hover:text-white rounded-md text-xs font-medium transition cursor-pointer">
+              Borrar
             </button>
           </td>
         </tr>
@@ -244,12 +271,17 @@
       document.getElementById('modal-titulo').textContent = 'Nueva Máquina';
       document.getElementById('form-equipo').reset();
       document.getElementById('equipo-id').value = '';
+      if (rackFiltro !== 'todos') {
+        document.getElementById('rack').value = rackFiltro;
+      }
       document.getElementById('modal').classList.remove('hidden');
       document.getElementById('modal').classList.add('flex');
     }
 
-    function editarEquipo(e) {
-      document.getElementById('modal-titulo').textContent = `Editar Rack ${e.rack} — Máquina #${e.numero_maquina}`;
+    function editarEquipoPorId(id) {
+      const e = equipos.find(item => item.id === id);
+      if (!e) return;
+      document.getElementById('modal-titulo').textContent = `Modificar Rack ${e.rack} — Máquina #${e.numero_maquina}`;
       document.getElementById('equipo-id').value = e.id;
       document.getElementById('rack').value = e.rack;
       document.getElementById('numero_maquina').value = e.numero_maquina;
@@ -297,6 +329,16 @@
         return;
       }
       cerrarModal();
+      cargarEquipos();
+    }
+
+    async function eliminarEquipo(id, rack, num) {
+      if (!confirm(`¿Seguro que querés borrar la Máquina #${num} del Rack ${rack}?`)) return;
+      const { error } = await db.from('equipos').delete().eq('id', id);
+      if (error) {
+        alert('Error al eliminar: ' + error.message);
+        return;
+      }
       cargarEquipos();
     }
 
