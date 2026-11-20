@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventario de Racks - UOCRA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+  <div class="max-w-7xl mx-auto p-4 md:p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-bold text-emerald-400">Inventario de Netbooks — Racks</h1>
+        <p class="text-slate-400 text-sm">Control técnico en tiempo real conectado a Supabase</p>
+      </div>
+      <button onclick="abrirModalNuevo()" class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold px-4 py-2 rounded-lg transition cursor-pointer">
+        + Agregar Máquina
+      </button>
+    </div>
+
+    <!-- Métricas -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Total Equipos</p>
+        <p id="stat-total" class="text-2xl font-bold mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Encienden</p>
+        <p id="stat-enciende" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Con Office</p>
+        <p id="stat-office" class="text-2xl font-bold text-sky-400 mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Batería OK</p>
+        <p id="stat-bateria" class="text-2xl font-bold text-amber-400 mt-1">0</p>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="flex flex-col md:flex-row gap-3 mb-4">
+      <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-800 w-fit">
+        <button onclick="filtrarRack('todos')" id="btn-todos" class="px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950">Todos</button>
+        <button onclick="filtrarRack(1)" id="btn-1" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white">Rack 1</button>
+        <button onclick="filtrarRack(2)" id="btn-2" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white">Rack 2</button>
+      </div>
+      <input type="text" id="buscador" oninput="renderizarTabla()" placeholder="Buscar por N° máquina, modelo, serial o estado..."
+        class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto bg-slate-900 border border-slate-800 rounded-xl">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-800/70 text-slate-300 uppercase text-xs">
+          <tr>
+            <th class="p-3">Rack</th>
+            <th class="p-3">N° Máq.</th>
+            <th class="p-3">Marca y Modelo</th>
+            <th class="p-3">Serial</th>
+            <th class="p-3 text-center">Enciende</th>
+            <th class="p-3">Estado</th>
+            <th class="p-3 text-center">Batería</th>
+            <th class="p-3 text-center">Internet</th>
+            <th class="p-3 text-center">Office</th>
+            <th class="p-3">Aplicaciones</th>
+            <th class="p-3">Observaciones</th>
+            <th class="p-3 text-right">Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-body" class="divide-y divide-slate-800">
+          <tr><td colspan="12" class="p-6 text-center text-slate-400">Cargando equipos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal Editar / Crear -->
+  <div id="modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+      <h2 id="modal-titulo" class="text-xl font-bold text-emerald-400 mb-4">Editar Máquina</h2>
+      <form id="form-equipo" onsubmit="guardarEquipo(event)" class="space-y-3">
+        <input type="hidden" id="equipo-id" />
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Rack</label>
+            <select id="rack" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm">
+              <option value="1">Rack 1</option>
+              <option value="2">Rack 2</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">N° de Máquina</label>
+            <input type="number" id="numero_maquina" required class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Marca y Modelo</label>
+            <input type="text" id="marca_modelo" placeholder="Ej: Juana Manso / G5" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Serial</label>
+            <input type="text" id="serial" placeholder="N° de serie" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Estado general</label>
+          <input type="text" id="estado" placeholder="Ej: Operativa / Pantalla rota / Bloqueada" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 pt-2">
+          <label class="flex items-center gap-2 bg-slate-800 p-2.5 rounded-lg cursor-pointer">
+            <input type="checkbox" id="enciende" class="accent-emerald-500 w-4 h-4" />
+            <span class="text-sm">Enciende</span>
+          </label>
+          <label class="flex items-center gap-2 bg-slate-800 p-2.5 rounded-lg cursor-pointer">
+            <input type="checkbox" id="funciona_bateria" class="accent-emerald-500 w-4 h-4" />
+            <span class="text-sm">Funciona Batería</span>
+          </label>
+          <label class="flex items-center gap-2 bg-slate-800 p-2.5 rounded-lg cursor-pointer">
+            <input type="checkbox" id="conexion_internet" class="accent-emerald-500 w-4 h-4" />
+            <span class="text-sm">Conexión Internet</span>
+          </label>
+          <label class="flex items-center gap-2 bg-slate-800 p-2.5 rounded-lg cursor-pointer">
+            <input type="checkbox" id="office" class="accent-emerald-500 w-4 h-4" />
+            <span class="text-sm">Office instalado</span>
+          </label>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Aplicaciones</label>
+          <input type="text" id="aplicaciones" placeholder="Ej: Chrome, VLC, GeoGebra..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm" />
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Observaciones</label>
+          <textarea id="observaciones" rows="2" placeholder="Detalles técnicos..." class="w-full bg-slate-800 border border-slate-700 rounded-lg p-2 text-sm"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-3">
+          <button type="button" onclick="cerrarModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">Cancelar</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-semibold text-sm">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // PEGÁ TU PROJECT URL ACÁ ABAJO (dejando las comillas)
+    const SUPABASE_URL = 'PEGAR_AQUI_TU_PROJECT_URL';
+    const SUPABASE_KEY = 'sb_publishable_ryRHRGDgfjAdw6ohIxq5YQ_zd3EWCZ8';
+
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let equipos = [];
+    let rackFiltro = 'todos';
+
+    async function cargarEquipos() {
+      const { data, error } = await db
+        .from('equipos')
+        .select('*')
+        .order('rack', { ascending: true })
+        .order('numero_maquina', { ascending: true });
+
+      if (error) {
+        alert('Error conectando a Supabase: ' + error.message);
+        return;
+      }
+      equipos = data || [];
+      actualizarMetricas();
+      renderizarTabla();
+    }
+
+    function actualizarMetricas() {
+      document.getElementById('stat-total').textContent = equipos.length;
+      document.getElementById('stat-enciende').textContent = equipos.filter(e => e.enciende).length;
+      document.getElementById('stat-office').textContent = equipos.filter(e => e.office).length;
+      document.getElementById('stat-bateria').textContent = equipos.filter(e => e.funciona_bateria).length;
+    }
+
+    function filtrarRack(rack) {
+      rackFiltro = rack;
+      ['todos', 1, 2].forEach(id => {
+        const btn = document.getElementById('btn-' + id);
+        if (id === rack) {
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950';
+        } else {
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white';
+        }
+      });
+      renderizarTabla();
+    }
+
+    function badgeBool(val) {
+      if (val === true) return '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-400">Sí</span>';
+      if (val === false) return '<span class="px-2 py-0.5 rounded-full text-xs bg-rose-500/20 text-rose-400">No</span>';
+      return '<span class="text-slate-600">-</span>';
+    }
+
+    function renderizarTabla() {
+      const q = document.getElementById('buscador').value.toLowerCase();
+      const filtrados = equipos.filter(e => {
+        const coincideRack = rackFiltro === 'todos' || e.rack === rackFiltro;
+        const texto = `${e.numero_maquina} ${e.marca_modelo || ''} ${e.serial || ''} ${e.estado || ''} ${e.observaciones || ''}`.toLowerCase();
+        return coincideRack && texto.includes(q);
+      });
+
+      const tbody = document.getElementById('tabla-body');
+      if (filtrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" class="p-6 text-center text-slate-500">No hay máquinas que coincidan.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtrados.map(e => `
+        <tr class="hover:bg-slate-800/40">
+          <td class="p-3 font-semibold text-emerald-400">R${e.rack}</td>
+          <td class="p-3 font-bold">#${e.numero_maquina}</td>
+          <td class="p-3">${e.marca_modelo || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 font-mono text-xs">${e.serial || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 text-center">${badgeBool(e.enciende)}</td>
+          <td class="p-3">${e.estado || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 text-center">${badgeBool(e.funciona_bateria)}</td>
+          <td class="p-3 text-center">${badgeBool(e.conexion_internet)}</td>
+          <td class="p-3 text-center">${badgeBool(e.office)}</td>
+          <td class="p-3 text-xs max-w-[150px] truncate">${e.aplicaciones || '-'}</td>
+          <td class="p-3 text-xs max-w-[180px] truncate">${e.observaciones || '-'}</td>
+          <td class="p-3 text-right">
+            <button onclick='editarEquipo(${JSON.stringify(e)})' class="px-3 py-1 bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 rounded-md text-xs font-medium transition">
+              Editar
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function abrirModalNuevo() {
+      document.getElementById('modal-titulo').textContent = 'Nueva Máquina';
+      document.getElementById('form-equipo').reset();
+      document.getElementById('equipo-id').value = '';
+      document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
+    }
+
+    function editarEquipo(e) {
+      document.getElementById('modal-titulo').textContent = `Editar Rack ${e.rack} — Máquina #${e.numero_maquina}`;
+      document.getElementById('equipo-id').value = e.id;
+      document.getElementById('rack').value = e.rack;
+      document.getElementById('numero_maquina').value = e.numero_maquina;
+      document.getElementById('marca_modelo').value = e.marca_modelo || '';
+      document.getElementById('serial').value = e.serial || '';
+      document.getElementById('estado').value = e.estado || '';
+      document.getElementById('enciende').checked = !!e.enciende;
+      document.getElementById('funciona_bateria').checked = !!e.funciona_bateria;
+      document.getElementById('conexion_internet').checked = !!e.conexion_internet;
+      document.getElementById('office').checked = !!e.office;
+      document.getElementById('aplicaciones').value = e.aplicaciones || '';
+      document.getElementById('observaciones').value = e.observaciones || '';
+      document.getElementById('modal').classList.remove('hidden');
+      document.getElementById('modal').classList.add('flex');
+    }
+
+    function cerrarModal() {
+      document.getElementById('modal').classList.add('hidden');
+      document.getElementById('modal').classList.remove('flex');
+    }
+
+    async function guardarEquipo(event) {
+      event.preventDefault();
+      const id = document.getElementById('equipo-id').value;
+      const payload = {
+        rack: parseInt(document.getElementById('rack').value),
+        numero_maquina: parseInt(document.getElementById('numero_maquina').value),
+        marca_modelo: document.getElementById('marca_modelo').value || null,
+        serial: document.getElementById('serial').value || null,
+        estado: document.getElementById('estado').value || null,
+        enciende: document.getElementById('enciende').checked,
+        funciona_bateria: document.getElementById('funciona_bateria').checked,
+        conexion_internet: document.getElementById('conexion_internet').checked,
+        office: document.getElementById('office').checked,
+        aplicaciones: document.getElementById('aplicaciones').value || null,
+        observaciones: document.getElementById('observaciones').value || null
+      };
+
+      const { error } = id
+        ? await db.from('equipos').update(payload).eq('id', id)
+        : await db.from('equipos').insert([payload]);
+
+      if (error) {
+        alert('Error al guardar: ' + error.message);
+        return;
+      }
+      cerrarModal();
+      cargarEquipos();
+    }
+
+    cargarEquipos();
+  </script>
+</body>
+</html>
