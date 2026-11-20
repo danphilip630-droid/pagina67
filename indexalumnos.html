@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventario de Racks - UOCRA (Solo Lectura)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+  <div class="max-w-7xl mx-auto p-4 md:p-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+      <div>
+        <div class="flex items-center gap-3">
+          <h1 class="text-2xl md:text-3xl font-bold text-emerald-400">Inventario de Netbooks — Racks</h1>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300">
+            Solo lectura
+          </span>
+        </div>
+        <p class="text-slate-400 text-sm">Vista de consulta en tiempo real conectada a Supabase</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="cargarEquipos()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-4 py-2 rounded-lg transition cursor-pointer text-sm">
+          ↻ Actualizar
+        </button>
+      </div>
+    </div>
+
+    <!-- Cartel de error si falla Supabase -->
+    <div id="banner-error" class="hidden bg-rose-500/15 border border-rose-500/40 text-rose-300 p-4 rounded-xl mb-6 text-sm"></div>
+
+    <!-- Métricas -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Total Equipos</p>
+        <p id="stat-total" class="text-2xl font-bold mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Encienden</p>
+        <p id="stat-enciende" class="text-2xl font-bold text-emerald-400 mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Con Office</p>
+        <p id="stat-office" class="text-2xl font-bold text-sky-400 mt-1">0</p>
+      </div>
+      <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+        <p class="text-slate-400 text-xs uppercase">Batería OK</p>
+        <p id="stat-bateria" class="text-2xl font-bold text-amber-400 mt-1">0</p>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="flex flex-col md:flex-row gap-3 mb-4">
+      <div class="flex bg-slate-900 p-1 rounded-lg border border-slate-800 w-fit">
+        <button onclick="filtrarRack('todos')" id="btn-todos" class="px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950 cursor-pointer">Todos</button>
+        <button onclick="filtrarRack(1)" id="btn-1" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer">Rack 1</button>
+        <button onclick="filtrarRack(2)" id="btn-2" class="px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer">Rack 2</button>
+      </div>
+      <input type="text" id="buscador" oninput="renderizarTabla()" placeholder="Buscar por N° máquina, modelo, serial o estado..."
+        class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto bg-slate-900 border border-slate-800 rounded-xl">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-slate-800/70 text-slate-300 uppercase text-xs">
+          <tr>
+            <th class="p-3">Rack</th>
+            <th class="p-3">N° Máq.</th>
+            <th class="p-3">Marca y Modelo</th>
+            <th class="p-3">Serial</th>
+            <th class="p-3 text-center">Enciende</th>
+            <th class="p-3">Estado</th>
+            <th class="p-3 text-center">Batería</th>
+            <th class="p-3 text-center">Internet</th>
+            <th class="p-3 text-center">Office</th>
+            <th class="p-3">Aplicaciones</th>
+            <th class="p-3">Observaciones</th>
+          </tr>
+        </thead>
+        <tbody id="tabla-body" class="divide-y divide-slate-800">
+          <tr><td colspan="11" class="p-6 text-center text-slate-400">Cargando equipos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://twhwvmzjdbamiranlhjv.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_ryRHRGDgfjAdw6ohIxq5YQ_zd3EWCZ8';
+
+    let db = null;
+    let equipos = [];
+    let rackFiltro = 'todos';
+
+    function mostrarError(msg) {
+      const banner = document.getElementById('banner-error');
+      banner.textContent = '⚠️ ' + msg;
+      banner.classList.remove('hidden');
+      document.getElementById('tabla-body').innerHTML =
+        `<tr><td colspan="11" class="p-6 text-center text-rose-400">${msg}</td></tr>`;
+    }
+
+    async function cargarEquipos() {
+      try {
+        if (!db) {
+          db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        }
+        const { data, error } = await db
+          .from('equipos')
+          .select('*')
+          .order('rack', { ascending: true })
+          .order('numero_maquina', { ascending: true });
+
+        if (error) {
+          mostrarError('Error de Supabase: ' + error.message);
+          return;
+        }
+        document.getElementById('banner-error').classList.add('hidden');
+        equipos = data || [];
+        actualizarMetricas();
+        renderizarTabla();
+      } catch (err) {
+        mostrarError('Error de conexión: ' + err.message);
+      }
+    }
+
+    function actualizarMetricas() {
+      const lista = rackFiltro === 'todos' ? equipos : equipos.filter(e => e.rack === rackFiltro);
+      document.getElementById('stat-total').textContent = lista.length;
+      document.getElementById('stat-enciende').textContent = lista.filter(e => e.enciende).length;
+      document.getElementById('stat-office').textContent = lista.filter(e => e.office).length;
+      document.getElementById('stat-bateria').textContent = lista.filter(e => e.funciona_bateria).length;
+    }
+
+    function filtrarRack(rack) {
+      rackFiltro = rack;
+      ['todos', 1, 2].forEach(id => {
+        const btn = document.getElementById('btn-' + id);
+        if (id === rack) {
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium bg-emerald-500 text-slate-950 cursor-pointer';
+        } else {
+          btn.className = 'px-4 py-1.5 rounded-md text-sm font-medium text-slate-300 hover:text-white cursor-pointer';
+        }
+      });
+      actualizarMetricas();
+      renderizarTabla();
+    }
+
+    function badgeBool(val) {
+      if (val === true) return '<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-400">Sí</span>';
+      if (val === false) return '<span class="px-2 py-0.5 rounded-full text-xs bg-rose-500/20 text-rose-400">No</span>';
+      return '<span class="text-slate-600">-</span>';
+    }
+
+    function renderizarTabla() {
+      const q = document.getElementById('buscador').value.toLowerCase();
+      const filtrados = equipos.filter(e => {
+        const coincideRack = rackFiltro === 'todos' || e.rack === rackFiltro;
+        const texto = `${e.numero_maquina} ${e.marca_modelo || ''} ${e.serial || ''} ${e.estado || ''} ${e.observaciones || ''}`.toLowerCase();
+        return coincideRack && texto.includes(q);
+      });
+
+      const tbody = document.getElementById('tabla-body');
+      if (filtrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="p-6 text-center text-slate-500">No hay máquinas cargadas en este filtro.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = filtrados.map(e => `
+        <tr class="hover:bg-slate-800/40">
+          <td class="p-3 font-semibold text-emerald-400">R${e.rack}</td>
+          <td class="p-3 font-bold">#${e.numero_maquina}</td>
+          <td class="p-3">${e.marca_modelo || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 font-mono text-xs">${e.serial || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 text-center">${badgeBool(e.enciende)}</td>
+          <td class="p-3">${e.estado || '<span class="text-slate-600">-</span>'}</td>
+          <td class="p-3 text-center">${badgeBool(e.funciona_bateria)}</td>
+          <td class="p-3 text-center">${badgeBool(e.conexion_internet)}</td>
+          <td class="p-3 text-center">${badgeBool(e.office)}</td>
+          <td class="p-3 text-xs max-w-[150px] truncate" title="${e.aplicaciones || ''}">${e.aplicaciones || '-'}</td>
+          <td class="p-3 text-xs max-w-[180px] truncate" title="${e.observaciones || ''}">${e.observaciones || '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    cargarEquipos();
+  </script>
+</body>
+</html>
